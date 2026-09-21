@@ -1,0 +1,121 @@
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* وزیرمتن به عنوان فونت پشتیبان سراسری قرار گرفت تا همه حروف فارسی را پوشش دهد */
+    --font-sans: 'Space Grotesk', 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Vazirmatn', monospace;
+    --font-vazir: 'Vazirmatn', sans-serif;
+  }
+
+  * {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background-color: #F4F6F0;
+    color: #000000;
+    /* الگوی دقیق دفتر شطرنجی / Graph Paper */
+    background-image: 
+      linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+    background-size: 24px 24px;
+    min-height: 100vh;
+  }
+
+  /* اجبار ورودی‌ها، تکست‌اریاها و بخش‌های فارسی به استفاده قطعی از وزیرمتن */
+  input, textarea, select, button, [dir="rtl"], .font-vazir {
+    font-family: var(--font-sans);
+  }
+}
+
+.font-vazir {
+  font-family: 'Vazirmatn', sans-serif !important;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', 'Vazirmatn', monospace !important;
+}
+
+/* Neo-brutalist hard shadows & tactile feel */
+.neo-shadow {
+  box-shadow: 3px 3px 0px 0px #000000;
+}
+
+.neo-shadow-sm {
+  box-shadow: 2px 2px 0px 0px #000000;
+}
+
+.neo-shadow-lg {
+  box-shadow: 5px 5px 0px 0px #000000;
+}
+
+.neo-btn {
+  transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.neo-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px 0px #000000;
+}
+
+/* 3D Card Flip Transformation */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F4F6F0;
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #000000;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #312E81;
+}
+
+/* =========================================================
+   Global Color Harmony
+   ========================================================= */
+
+[class*="bg-[#FF2A5F]"] {
+  background-color: #2563EB !important;
+  color: #FFFFFF !important;
+}
+
+[class*="text-[#FF2A5F]"] {
+  color: #2563EB !important;
+}
+
+[class*="bg-[#FFCDD2]"] {
+  background-color: #DBEAFE !important;
+  color: #1E3A8A !important;
+}
+
+[class*="hover:bg-[#FFCDD2]"]:hover {
+  background-color: #BFDBFE !important;
+}
