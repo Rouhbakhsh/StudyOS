@@ -2,6 +2,11 @@
 
 > **An offline-first, deliberate English acquisition operating system built with React, Vite, and Neo-Brutalist design principles.**
 
+### 🚀 [🔗(Live Demo)](https://rouhbakhsh.github.io/StudyOS/)
+
+[![Live Demo](https://img.shields.io/badge/Live_Demo-StudyOS_Web-brightgreen?style=for-the-badge&logo=githubpages)](https://rouhbakhsh.github.io/StudyOS/)
+[![GitHub license](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+
 ---
 
 ## 🌐 English Overview

@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   Lightbulb,
+  ArrowLeft,
 } from 'lucide-react';
 import { SearchIndexItem, OxfordWordDetail, SenseItem } from '../../types/oxford';
 import { AppState, Flashcard } from '../../types';
@@ -98,6 +99,9 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
   const [selectedWord, setSelectedWord] = useState<{ id: number; w: string } | null>(null);
   const [activeWordDetail, setActiveWordDetail] = useState<OxfordWordDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
+
+  // وضعیت ناوبری موبایل بین فهرست و صفحه جزئیات
+  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
 
   // وضعیت نمایش کادر شناور یادداشت/ترجمه
   const [showNoteInput, setShowNoteInput] = useState<boolean>(false);
@@ -240,6 +244,7 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
 
       if (target) {
         setSelectedWord({ id: target.id, w: target.w || '' });
+        setMobileView('detail');
         lastSelectedQueryRef.current = initialSearchQuery;
         setTimeout(() => {
           const el = document.getElementById(`word-item-${target.id}`);
@@ -267,6 +272,7 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
 
   const handleSelectWordCallback = useCallback((id: number, word: string) => {
     setSelectedWord({ id, w: word });
+    setMobileView('detail');
   }, []);
 
   const handleJumpToLetter = (letter: string) => {
@@ -356,38 +362,40 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
   const isLightbulbActive = Boolean(customPersianNote) || showNoteInput;
 
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-3 sm:space-y-4 pb-8">
       {/* ۱. نوار ابزار و فیلترهای بالا */}
-      <div className="bg-[#FFFDF5] border-2 border-black rounded-3xl p-3.5 neo-shadow flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <BookOpen className="w-5 h-5 text-[#312E81]" />
-          <span className="text-base font-black text-black">Oxford 5000 Lexicon</span>
-          <span className="text-[10px] font-mono font-bold bg-black/5 px-2 py-0.5 rounded-md border border-black/10 text-black/60">
+      <div className="bg-[#FFFDF5] border-2 border-black rounded-2xl sm:rounded-3xl p-3 sm:p-3.5 neo-shadow flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3">
+        <div className="flex items-center justify-between md:justify-start gap-2.5">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-[#312E81] shrink-0" />
+            <span className="text-sm sm:text-base font-black text-black">Oxford 5000 Lexicon</span>
+          </div>
+          <span className="text-[10px] font-mono font-bold bg-black/5 px-2 py-0.5 rounded-md border border-black/10 text-black/60 shrink-0">
             5,906 Words • Offline
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
           <button
             type="button"
             onClick={() => setOnlyAcademic(!onlyAcademic)}
-            className={`px-3 py-1 rounded-xl border-2 border-black text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none ${
+            className={`px-2.5 sm:px-3 py-1 rounded-xl border-2 border-black text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
               onlyAcademic
-                ? 'bg-[#312E81] text-white shadow-[2px_2px_0px_0px_#000]'
-                : 'bg-white text-black hover:bg-black/5 shadow-[2px_2px_0px_0px_#000]'
+                ? 'bg-[#312E81] text-white shadow-[1.5px_1.5px_0px_0px_#000]'
+                : 'bg-white text-black hover:bg-black/5 shadow-[1.5px_1.5px_0px_0px_#000]'
             }`}
           >
-            <GraduationCap className="w-3.5 h-3.5" />
+            <GraduationCap className="w-3.5 h-3.5 shrink-0" />
             <span>OPAL Academic</span>
           </button>
 
-          <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl border-2 border-black/10">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-black/5 p-1 rounded-xl border-2 border-black/10 overflow-x-auto">
             {['all', 'A1', 'A2', 'B1', 'B2', 'C1'].map((lvl) => (
               <button
                 key={lvl}
                 type="button"
                 onClick={() => setSelectedLevel(lvl)}
-                className={`px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 ${
+                className={`px-2 sm:px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 shrink-0 ${
                   selectedLevel === lvl
                     ? 'bg-black text-white shadow-[1px_1px_0px_0px_#000]'
                     : 'bg-transparent text-black hover:bg-black/10'
@@ -400,11 +408,16 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
         </div>
       </div>
 
-      {/* ۲. ساختار دو ستونه */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 h-[calc(100vh-210px)] min-h-[580px]">
-        {/* ستون سمت چپ: ایندکس کلمات و سرچ */}
-        <div className="md:col-span-5 lg:col-span-4 bg-[#FFFDF5] border-2 border-black rounded-3xl p-4 neo-shadow flex flex-col h-full overflow-hidden">
-          <div className="relative mb-2">
+      {/* ۲. ساختار دو ستونه تطبیق‌پذیر */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4 h-[calc(100dvh-175px)] md:h-[calc(100vh-210px)] min-h-[500px]">
+        
+        {/* ستون سمت چپ: ایندکس کلمات و سرچ (در موبایل هنگام مشاهده جزئیات پنهان می‌شود) */}
+        <div
+          className={`md:col-span-5 lg:col-span-4 bg-[#FFFDF5] border-2 border-black rounded-2xl sm:rounded-3xl p-3 sm:p-4 neo-shadow flex-col h-full overflow-hidden ${
+            mobileView === 'detail' ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          <div className="relative mb-2 shrink-0">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-black/40" />
             <input
               type="text"
@@ -424,20 +437,20 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
             )}
           </div>
 
-          <div className="flex items-center justify-between overflow-x-auto no-scrollbar py-1 mb-2 border-b border-black/10 text-[10px] font-mono font-bold text-black/60">
+          <div className="flex items-center justify-between overflow-x-auto no-scrollbar py-1 mb-2 border-b border-black/10 text-[10px] font-mono font-bold text-black/60 shrink-0">
             {ALPHABET.map((letter) => (
               <button
                 key={letter}
                 type="button"
                 onClick={() => handleJumpToLetter(letter)}
-                className="px-1 hover:text-[#312E81] hover:scale-125 transition-transform cursor-pointer"
+                className="px-1 min-w-[16px] text-center hover:text-[#312E81] hover:scale-125 transition-transform cursor-pointer"
               >
                 {letter}
               </button>
             ))}
           </div>
 
-          <div className="text-[10px] font-mono font-bold text-black/40 pb-1.5 flex justify-between">
+          <div className="text-[10px] font-mono font-bold text-black/40 pb-1.5 flex justify-between shrink-0">
             <span>ENTRIES</span>
             <span>{filteredIndex.length}</span>
           </div>
@@ -469,23 +482,42 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
           </div>
         </div>
 
-        {/* ستون سمت راست: مدخل دیکشنری */}
-        <div className="md:col-span-7 lg:col-span-8 bg-[#FFFDF5] border-2 border-black rounded-3xl p-6 sm:p-8 neo-shadow flex flex-col h-full overflow-y-auto">
+        {/* ستون سمت راست: مدخل دیکشنری (در موبایل تنها پس از انتخاب واژه نمایش می‌یابد) */}
+        <div
+          className={`md:col-span-7 lg:col-span-8 bg-[#FFFDF5] border-2 border-black rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 neo-shadow flex-col h-full overflow-y-auto ${
+            mobileView === 'list' ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          {/* دکمه بازگشت به فهرست لغات مخصوص نمایش در موبایل */}
+          <div className="md:hidden flex items-center justify-between pb-3 mb-2 border-b border-black/10 shrink-0">
+            <button
+              type="button"
+              onClick={() => setMobileView('list')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-black bg-white hover:bg-black/5 text-xs font-mono font-bold shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-0.5 active:translate-y-0.5"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Word List ({filteredIndex.length})</span>
+            </button>
+            <span className="text-[11px] font-mono text-black/50 font-bold">
+              {activeWordDetail?.word || selectedWord?.w || ''}
+            </span>
+          </div>
+
           {loadingDetail ? (
             <div className="m-auto font-mono text-xs text-black/50 animate-pulse">
               Loading entry...
             </div>
           ) : !activeWordDetail ? (
             <div className="m-auto text-center font-mono text-xs text-black/40">
-              Select any word from the left list to read its entry.
+              Select any word from the list to read its entry.
             </div>
           ) : (
-            <div className="space-y-6 max-w-3xl">
-              {/* هدر مدخل واژه + دکمه لامپ با پاپ‌اور شناور بسته شونده خودکار + دکمه فلش‌کارت */}
-              <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-black/10">
-                <div className="space-y-2">
-                  <div className="flex items-baseline gap-3 flex-wrap">
-                    <h2 className="text-4xl font-black text-black tracking-tight font-serif">
+            <div className="space-y-5 sm:space-y-6 max-w-3xl">
+              {/* هدر مدخل واژه + تلفظ + دکمه‌ها */}
+              <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4 pb-4 border-b border-black/10">
+                <div className="space-y-2 min-w-0">
+                  <div className="flex items-baseline gap-2.5 sm:gap-3 flex-wrap">
+                    <h2 className="text-3xl sm:text-4xl font-black text-black tracking-tight font-serif break-words">
                       {activeWordDetail.word}
                     </h2>
                     <span className="text-sm italic font-serif text-black/60">
@@ -496,16 +528,16 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                     </Badge>
                   </div>
 
-                  {/* تلفظ‌های صوتی به همراه بررسی قطع نبودن صدا */}
-                  <div className="flex items-center gap-3 pt-1 text-xs font-mono">
+                  {/* تلفظ‌های صوتی */}
+                  <div className="flex items-center gap-2 sm:gap-3 pt-1 text-xs font-mono flex-wrap">
                     {activeWordDetail.audio?.uk && (
                       <button
                         type="button"
                         onClick={() => handlePlayAudio(activeWordDetail.audio?.uk)}
-                        className="px-2.5 py-1 rounded-xl border-2 border-black bg-[#E0E7FF] hover:bg-[#C7D2FE] text-[#312E81] font-bold shadow-[2px_2px_0px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-1.5 cursor-pointer"
+                        className="px-2.5 py-1 rounded-xl border-2 border-black bg-[#E0E7FF] hover:bg-[#C7D2FE] text-[#312E81] font-bold shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 transition-all flex items-center gap-1.5 cursor-pointer"
                         title="Play UK Audio"
                       >
-                        <Volume2 className="w-3.5 h-3.5 text-[#312E81]" />
+                        <Volume2 className="w-3.5 h-3.5 text-[#312E81] shrink-0" />
                         <span>UK {activeWordDetail.phonetics?.uk}</span>
                       </button>
                     )}
@@ -514,24 +546,24 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handlePlayAudio(activeWordDetail.audio?.us)}
-                        className="px-2.5 py-1 rounded-xl border-2 border-black bg-[#FFE0B2] hover:bg-[#FFCC80] text-amber-900 font-bold shadow-[2px_2px_0px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-1.5 cursor-pointer"
+                        className="px-2.5 py-1 rounded-xl border-2 border-black bg-[#FFE0B2] hover:bg-[#FFCC80] text-amber-900 font-bold shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 transition-all flex items-center gap-1.5 cursor-pointer"
                         title="Play US Audio"
                       >
-                        <Volume2 className="w-3.5 h-3.5 text-amber-900" />
+                        <Volume2 className="w-3.5 h-3.5 text-amber-900 shrink-0" />
                         <span>US {activeWordDetail.phonetics?.us}</span>
                       </button>
                     )}
                   </div>
                 </div>
 
-                {/* ابزارهای گوشه: لامپ هینت شناور + دکمه فلش‌کارت دوطرفه */}
-                <div className="flex items-center gap-2">
-                  {/* محفظه هینت شناور با تشخیص کلیک در بیرون (Outside Click) */}
+                {/* ابزارهای گوشه: لامپ هینت شناور + دکمه فلش‌کارت */}
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  {/* محفظه هینت شناور با تشخیص کلیک در بیرون */}
                   <div className="relative" ref={noteContainerRef}>
                     <button
                       type="button"
                       onClick={() => setShowNoteInput(!showNoteInput)}
-                      className={`h-9 w-9 rounded-xl border-2 border-black flex items-center justify-center cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-none shadow-[2px_2px_0px_0px_#000] ${
+                      className={`h-9 w-9 rounded-xl border-2 border-black flex items-center justify-center cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_#000] ${
                         isLightbulbActive
                           ? 'bg-[#FFF3C4] text-amber-900'
                           : 'bg-white hover:bg-black/5 text-black/40'
@@ -547,11 +579,11 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                       />
                     </button>
 
-                    {/* کادر شناور پاپ‌اور با فونت تضمین‌شده وزیرمتن */}
+                    {/* کادر شناور پاپ‌اور ترجمه سازگار با عرض موبایل */}
                     {showNoteInput && (
                       <div
                         dir="auto"
-                        className="absolute right-0 top-11 z-40 w-72 bg-[#FFFDF5] border-2 border-black rounded-2xl p-2.5 shadow-[3px_3px_0px_0px_#000] animate-in fade-in zoom-in-95 duration-100"
+                        className="absolute right-0 top-11 z-40 w-[calc(100vw-3rem)] max-w-xs sm:w-72 bg-[#FFFDF5] border-2 border-black rounded-2xl p-2.5 shadow-[3px_3px_0px_0px_#000] animate-in fade-in zoom-in-95 duration-100"
                       >
                         <div className="relative">
                           <input
@@ -579,11 +611,11 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                     )}
                   </div>
 
-                  {/* دکمه فلش‌کارت با عرض ثابت بدون پرش و بدون ضربدر اضافه */}
+                  {/* دکمه فلش‌کارت */}
                   <button
                     type="button"
                     onClick={() => handleToggleFlashcard(activeWordDetail)}
-                    className={`h-9 w-44 rounded-xl border-2 border-black text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer transition-all shrink-0 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none shadow-[2px_2px_0px_0px_#000] ${
+                    className={`h-9 px-3 sm:w-44 rounded-xl border-2 border-black text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer transition-all shrink-0 active:translate-x-0.5 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_#000] ${
                       isCurrentWordInCards
                         ? 'bg-[#C8E6C9] hover:bg-[#FFCDD2] text-emerald-950 hover:text-rose-950 group'
                         : 'bg-[#C8E6C9] hover:bg-[#A5D6A7] text-black'
@@ -600,7 +632,7 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                     ) : (
                       <>
                         <Layers className="w-4 h-4 text-black shrink-0" />
-                        <span>+ Add to Flashcards</span>
+                        <span>+ Add to Cards</span>
                       </>
                     )}
                   </button>
@@ -630,7 +662,7 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
               )}
 
               {/* بخش تعاریف واژه با اولویت بصری دقیق الگوها */}
-              <div className="space-y-6 pt-1">
+              <div className="space-y-5 pt-1">
                 {activeWordDetail.senses?.map((sense, sIdx) => (
                   <div key={sIdx} className="space-y-2 group">
                     <div className="flex items-center gap-2 flex-wrap text-sm">
@@ -664,16 +696,16 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                       )}
                     </div>
 
-                    <div className="text-[15px] sm:text-base font-bold text-slate-900 leading-snug pl-5 font-sans">
+                    <div className="text-[14.5px] sm:text-base font-bold text-slate-900 leading-snug pl-4 sm:pl-5 font-sans">
                       {sense.definition}
                     </div>
 
                     {sense.examples && sense.examples.length > 0 && (
-                      <div className="pl-5 space-y-1.5 pt-1">
+                      <div className="pl-4 sm:pl-5 space-y-1.5 pt-1">
                         {sense.examples.map((ex, exIdx) => (
                           <div
                             key={exIdx}
-                            className="text-[13.5px] italic text-slate-700 pl-3 border-l-2 border-[#312E81]/40 leading-relaxed font-serif"
+                            className="text-[13px] sm:text-[13.5px] italic text-slate-700 pl-3 border-l-2 border-[#312E81]/40 leading-relaxed font-serif"
                           >
                             "{ex}"
                           </div>
@@ -682,7 +714,7 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                     )}
 
                     {sense.collocations && sense.collocations.length > 0 && (
-                      <div className="pl-5 pt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                      <div className="pl-4 sm:pl-5 pt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
                         <span className="font-mono text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                           Collocations:
                         </span>
