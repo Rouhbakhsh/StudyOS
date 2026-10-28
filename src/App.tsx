@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ToastContainer } from './components/common/ToastContainer';
 import { showToast } from './services/notification';
 import {
@@ -13,7 +13,7 @@ import {
   CurriculumBook,
   CurriculumUnit,
 } from './types';
-import { loadAppState, saveAppState } from './services/storage';
+import { loadAppState, saveAppState, scheduleSave, flushPendingSave } from './services/storage';
 import { playSound } from './services/audio';
 import { INITIAL_STATE } from './data/seedData';
 import { Navbar, TabKey } from './components/navigation/Navbar';
@@ -33,13 +33,31 @@ import { CardEditorModal } from './components/cards/CardEditorModal';
 import { MistakeModal } from './components/mistakes/MistakeModal';
 import { LexiconModal } from './components/lexicon/LexiconModal';
 import { UnitInspectorModal } from './components/library/UnitInspectorModal';
-import { getBook, getPlanForDay } from './services/scheduler';
+import { getBook, getPlanForDay, TOTAL_DAYS } from './services/scheduler';
+import { getTodayDateString } from './utils/date';
+import {
+  applyDayRollover,
+  createFreshPlanState,
+  migratePlanDates,
+} from './services/progress';
+import { WelcomeScreen } from './components/common/WelcomeScreen';
+import { CatchUpNotice, CatchUpInfo } from './components/common/CatchUpNotice';
 
 export function App() {
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const [isHydrated, setIsHydrated] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [selectedDay, setSelectedDay] = useState<number>(1);
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set(['today']));
+
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
   const [lexiconSearchQuery, setLexiconSearchQuery] = useState<string>('');
 
   // Global modals
@@ -53,47 +71,51 @@ export function App() {
   const [inspectingBook, setInspectingBook] = useState<CurriculumBook | null>(null);
   const [inspectingUnit, setInspectingUnit] = useState<CurriculumUnit | null>(null);
 
-  // ۱. بارگذاری اولیه و چک کردن تاریخ واقعی سیستم (Auto-Rollover)
+  // Catch up notice state
+  const [catchUpInfo, setCatchUpInfo] = useState<CatchUpInfo | null>(null);
+
+  // ۱. بارگذاری اولیه، پشتیبانی از صفحه خوشامد و رول‌اور هوشمند روزانه
   useEffect(() => {
     loadAppState().then((saved) => {
       let workingState = saved;
-      const todayDateStr = new Date().toISOString().split('T')[0];
-      const lastOpenDate = workingState.settings.lastOpenedDate;
+      const today = getTodayDateString();
 
-      if (lastOpenDate && lastOpenDate !== todayDateStr) {
-        const activeDay = workingState.settings.currentActiveDay || 1;
-        const plan = getPlanForDay(activeDay);
+      // همگام‌سازی یادداشت‌های فارسی با حافظه لوکال
+      if (workingState.lexiconNotes && typeof workingState.lexiconNotes === 'object') {
+        try {
+          const existing = JSON.parse(localStorage.getItem('oxford_persian_notes') || '{}');
+          localStorage.setItem(
+            'oxford_persian_notes',
+            JSON.stringify({ ...existing, ...workingState.lexiconNotes })
+          );
+        } catch {}
+      }
 
-        const isCompleted = plan.isConsolidation
-          ? Boolean(workingState.consolidationRecords?.[plan.weekNumber]?.completed)
-          : plan.slots.every((s) => Boolean(workingState.unitProgress[`${s.bookId}_${s.unit}`]?.completed));
+      // اولین اجرا: هدایت به صفحه خوشامد
+      if (!workingState.settings.onboardedAt) {
+        setState(workingState);
+        setIsHydrated(true);
+        return;
+      }
 
-        if (isCompleted && activeDay < 120) {
-          workingState = {
-            ...workingState,
-            settings: {
-              ...workingState.settings,
-              currentActiveDay: activeDay + 1,
-              lastOpenedDate: todayDateStr,
-            },
-          };
-        } else {
-          workingState = {
-            ...workingState,
-            settings: {
-              ...workingState.settings,
-              lastOpenedDate: todayDateStr,
-            },
-          };
+      // انتقال و تنظیم تاریخ‌های شروع برای کاربرانی که قبلاً بدون Onboarding شروع کرده بودند
+      workingState = {
+        ...workingState,
+        settings: migratePlanDates(workingState.settings, today),
+      };
+
+      // رول‌اور تقویمی بدون انباشت درس‌ها
+      const rollover = applyDayRollover(workingState, today);
+      if (rollover.changed) {
+        workingState = rollover.state;
+        if (rollover.missedDays > 0) {
+          setCatchUpInfo({
+            missedDays: rollover.missedDays,
+            activeDay: rollover.activeDay,
+          });
+        } else if (rollover.finishedDay !== null) {
+          showToast(`Day ${rollover.finishedDay} complete. Day ${rollover.activeDay} is ready.`, 'success');
         }
-      } else if (!lastOpenDate) {
-        workingState = {
-          ...workingState,
-          settings: {
-            ...workingState.settings,
-            lastOpenedDate: todayDateStr,
-          },
-        };
       }
 
       setState(workingState);
@@ -104,11 +126,58 @@ export function App() {
     });
   }, []);
 
-  // ۲. اتوسیو بلادرنگ
+  // ۲. بررسی خودکار عبور از نیمه‌شب حتی در صورتی که برنامه مداوم باز بماند یا ویندوز از Sleep خارج شود
   useEffect(() => {
     if (!isHydrated) return;
-    saveAppState(state);
+
+    const checkMidnight = () => {
+      const today = getTodayDateString();
+      setState((prev) => {
+        if (!prev.settings.onboardedAt || prev.settings.lastOpenedDate === today) {
+          return prev;
+        }
+        const rollover = applyDayRollover(prev, today);
+        if (rollover.changed) {
+          if (rollover.missedDays > 0) {
+            setCatchUpInfo({
+              missedDays: rollover.missedDays,
+              activeDay: rollover.activeDay,
+            });
+          } else if (rollover.finishedDay !== null) {
+            showToast(`Day ${rollover.finishedDay} complete. Day ${rollover.activeDay} is ready.`, 'success');
+          }
+          setSelectedDay((current) => (current === prev.settings.currentActiveDay ? rollover.activeDay : current));
+          return rollover.state;
+        }
+        return prev;
+      });
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') checkMidnight();
+    };
+
+    const interval = setInterval(checkMidnight, 30000); // چک کردن هر ۳۰ ثانیه
+    window.addEventListener('focus', checkMidnight);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', checkMidnight);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [isHydrated]);
+
+  // ۳. اتوسیو بلادرنگ با Debounce برای کاهش استهلاک حافظه/دیسک
+  useEffect(() => {
+    if (!isHydrated) return;
+    scheduleSave(state);
   }, [state, isHydrated]);
+
+  // نوشتن فوری آخرین تغییرات هنگام بستن یا رفرش پنجره
+  useEffect(() => {
+    window.addEventListener('beforeunload', flushPendingSave);
+    return () => window.removeEventListener('beforeunload', flushPendingSave);
+  }, []);
 
   // شنونده سوییچ بین تب‌ها
   useEffect(() => {
@@ -123,7 +192,9 @@ export function App() {
     };
 
     window.addEventListener('switch-tab', handleSwitchTab);
-    return () => window.removeEventListener('switch-tab', handleSwitchTab);
+    return () => {
+      window.removeEventListener('switch-tab', handleSwitchTab);
+    };
   }, []);
 
   const handleUpdateSettings = (newSettings: Partial<SystemSettings>) => {
@@ -169,9 +240,35 @@ export function App() {
     showToast('Schedule shift reverted.', 'info');
   };
 
+  const handleStartPlan = (learnerName: string) => {
+    const today = getTodayDateString();
+    const fresh = createFreshPlanState(learnerName, today);
+    setState(fresh);
+    setSelectedDay(1);
+    playSound('complete', true);
+  };
+
   const handleRestoreState = (restoredState: AppState) => {
-    setState(restoredState);
-    setSelectedDay(restoredState.settings.currentActiveDay || 1);
+    const today = getTodayDateString();
+    const migratedSettings = migratePlanDates(restoredState.settings, today);
+    const finalState = { ...restoredState, settings: migratedSettings };
+    setState(finalState);
+    setSelectedDay(finalState.settings.currentActiveDay || 1);
+    playSound('complete', true);
+    showToast('Vault backup restored successfully.', 'success');
+  };
+
+  const handleSaveLexiconNote = (word: string, note: string) => {
+    setState((prev) => {
+      const notes = { ...(prev.lexiconNotes || {}) };
+      const key = word.toLowerCase();
+      if (note.trim()) {
+        notes[key] = note;
+      } else {
+        delete notes[key];
+      }
+      return { ...prev, lexiconNotes: notes };
+    });
   };
 
   const handleResetState = () => {
@@ -193,6 +290,7 @@ export function App() {
       todayRitual: {},
       unitProgress: {},
       consolidationRecords: {},
+      lexiconNotes: {},
     }));
     playSound('complete', true);
     showToast('All user data purged successfully.', 'info');
@@ -230,7 +328,7 @@ export function App() {
     showToast(`Day ${activeDay} progress has been reset.`, 'info');
   };
 
-  const handleUpdateUnitProgress = (unitKey: string, updates: Partial<UnitProgress>) => {
+  const handleUpdateUnitProgress = useCallback((unitKey: string, updates: Partial<UnitProgress>) => {
     setState((prev) => {
       const existing = prev.unitProgress[unitKey] || {
         completed: false,
@@ -245,9 +343,9 @@ export function App() {
         },
       };
     });
-  };
+  }, []);
 
-  const handleCompleteUnit = (unitKey: string, timeSpentSeconds: number) => {
+  const handleCompleteUnit = useCallback((unitKey: string, timeSpentSeconds: number) => {
     setState((prev) => {
       const existing = prev.unitProgress[unitKey] || {
         completed: false,
@@ -286,9 +384,9 @@ export function App() {
     });
 
     playSound('complete', state.settings.soundEnabled);
-  };
+  }, [state.settings.soundEnabled]);
 
-  const handleSaveCard = (card: Flashcard) => {
+  const handleSaveCard = useCallback((card: Flashcard) => {
     const normalizedTarget = card.targetPhrase.trim().toLowerCase();
     const duplicate = state.flashcards.find(
       (c) => c.id !== card.id && c.targetPhrase.trim().toLowerCase() === normalizedTarget
@@ -308,7 +406,7 @@ export function App() {
     });
     playSound('complete', state.settings.soundEnabled);
     showToast(`Flashcard "${card.targetPhrase}" saved.`, 'success');
-  };
+  }, [state.flashcards, state.settings.soundEnabled]);
 
   const handleDeleteCard = (id: string) => {
     setState((prev) => ({
@@ -555,6 +653,16 @@ export function App() {
     );
   }
 
+  // اولین اجرا: صفحه خوشامد
+  if (!state.settings.onboardedAt) {
+    return (
+      <WelcomeScreen
+        onStart={handleStartPlan}
+        onRestore={handleRestoreState}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col font-sans relative">
       <Navbar
@@ -571,7 +679,7 @@ export function App() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-6">
-        {activeTab === 'today' && (
+        <div className={activeTab === 'today' ? 'block' : 'hidden'}>
           <TodayView
             state={state}
             selectedDay={selectedDay}
@@ -589,84 +697,101 @@ export function App() {
             onSaveDailySprint={handleSaveDailySprint}
             onUpdateConsolidation={handleUpdateConsolidation}
           />
+        </div>
+
+        {visitedTabs.has('schedule') && (
+          <div className={activeTab === 'schedule' ? 'block' : 'hidden'}>
+            <ScheduleView
+              state={state}
+              onSelectDayAndNavigate={handleNavigateToDay}
+            />
+          </div>
         )}
 
-        {activeTab === 'schedule' && (
-          <ScheduleView
-            state={state}
-            onSelectDayAndNavigate={handleNavigateToDay}
-          />
+        {visitedTabs.has('cards') && (
+          <div className={activeTab === 'cards' ? 'block' : 'hidden'}>
+            <CardsView
+              state={state}
+              onOpenReviewModal={() => setIsReviewModalOpen(true)}
+              onSaveCard={handleSaveCard}
+              onDeleteCard={handleDeleteCard}
+              onNavigateToLexicon={(word) => {
+                setLexiconSearchQuery(word);
+                setActiveTab('lexicon');
+              }}
+            />
+          </div>
         )}
 
-        {activeTab === 'cards' && (
-          <CardsView
-            state={state}
-            onOpenReviewModal={() => setIsReviewModalOpen(true)}
-            onSaveCard={handleSaveCard}
-            onDeleteCard={handleDeleteCard}
-            onNavigateToLexicon={(word) => {
-              setLexiconSearchQuery(word);
-              setActiveTab('lexicon');
-            }}
-          />
+        {visitedTabs.has('lexicon') && (
+          <div className={activeTab === 'lexicon' ? 'block' : 'hidden'}>
+            <LexiconView
+              state={state}
+              onAddWord={handleAddLexiconWord}
+              onDeleteWord={handleDeleteLexiconWord}
+              onPushToFlashcards={handlePushLexiconToFlashcards}
+              onRemoveFromFlashcards={handleRemoveLexiconFromFlashcards}
+              onSaveNote={handleSaveLexiconNote}
+              initialSearchQuery={lexiconSearchQuery}
+            />
+          </div>
         )}
 
-        {activeTab === 'lexicon' && (
-          <LexiconView
-            state={state}
-            onAddWord={handleAddLexiconWord}
-            onDeleteWord={handleDeleteLexiconWord}
-            onPushToFlashcards={handlePushLexiconToFlashcards}
-            onRemoveFromFlashcards={handleRemoveLexiconFromFlashcards}
-            initialSearchQuery={lexiconSearchQuery}
-          />
+        {visitedTabs.has('mistakes') && (
+          <div className={activeTab === 'mistakes' ? 'block' : 'hidden'}>
+            <MistakesView
+              state={state}
+              onAddMistake={handleAddMistake}
+              onUpdateMistake={handleUpdateMistake}
+              onDeleteMistake={handleDeleteMistake}
+              onPushMistakeToFlashcards={handlePushMistakeToFlashcards}
+            />
+          </div>
         )}
 
-        {activeTab === 'mistakes' && (
-          <MistakesView
-            state={state}
-            onAddMistake={handleAddMistake}
-            onUpdateMistake={handleUpdateMistake}
-            onDeleteMistake={handleDeleteMistake}
-            onPushMistakeToFlashcards={handlePushMistakeToFlashcards}
-          />
+        {visitedTabs.has('studio') && (
+          <div className={activeTab === 'studio' ? 'block' : 'hidden'}>
+            <StudioView
+              state={state}
+              onCommitTimerSession={(sess) => {
+                setState((prev) => ({
+                  ...prev,
+                  timerSessions: [sess, ...prev.timerSessions],
+                }));
+              }}
+              onSaveSprintFromStudio={(sprint) => {
+                setState((prev) => ({
+                  ...prev,
+                  sprints: [sprint, ...prev.sprints],
+                }));
+              }}
+            />
+          </div>
         )}
 
-        {activeTab === 'studio' && (
-          <StudioView
-            state={state}
-            onCommitTimerSession={(sess) => {
-              setState((prev) => ({
-                ...prev,
-                timerSessions: [sess, ...prev.timerSessions],
-              }));
-            }}
-            onSaveSprintFromStudio={(sprint) => {
-              setState((prev) => ({
-                ...prev,
-                sprints: [sprint, ...prev.sprints],
-              }));
-            }}
-          />
+        {visitedTabs.has('analytics') && (
+          <div className={activeTab === 'analytics' ? 'block' : 'hidden'}>
+            <AnalyticsView state={state} />
+          </div>
         )}
 
-        {activeTab === 'analytics' && (
-          <AnalyticsView state={state} />
+        {visitedTabs.has('sprints') && (
+          <div className={activeTab === 'sprints' ? 'block' : 'hidden'}>
+            <SprintsView
+              state={state}
+              onCommitSprint={handleCommitSprint}
+              onDeleteSprint={handleDeleteSprint}
+            />
+          </div>
         )}
 
-        {activeTab === 'sprints' && (
-          <SprintsView
-            state={state}
-            onCommitSprint={handleCommitSprint}
-            onDeleteSprint={handleDeleteSprint}
-          />
-        )}
-
-        {activeTab === 'library' && (
-          <LibraryView
-            state={state}
-            onNavigateToDay={handleNavigateToDay}
-          />
+        {visitedTabs.has('library') && (
+          <div className={activeTab === 'library' ? 'block' : 'hidden'}>
+            <LibraryView
+              state={state}
+              onNavigateToDay={handleNavigateToDay}
+            />
+          </div>
         )}
       </main>
 
@@ -733,6 +858,14 @@ export function App() {
         }
         flashcards={state.flashcards}
         onNavigateToDay={handleNavigateToDay}
+      />
+
+      <CatchUpNotice
+        info={catchUpInfo}
+        learnerName={state.settings.learnerName}
+        totalShiftedDays={state.settings.shiftedDays || 0}
+        onContinue={() => setCatchUpInfo(null)}
+        onClose={() => setCatchUpInfo(null)}
       />
 
       <ToastContainer />

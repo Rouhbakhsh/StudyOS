@@ -16,8 +16,9 @@ import {
 import { ScheduledSlot, UnitProgress, Flashcard } from '../../types';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
-import { parseClozeString } from '../../services/sm2';
+import { parseClozeString } from '../../services/fsrs';
 import { playSound } from '../../services/audio';
+import { getTodayDateString } from '../../utils/date';
 
 interface LessonCardProps {
   slot: ScheduledSlot;
@@ -139,7 +140,10 @@ export const LessonCard: React.FC<LessonCardProps> = ({
       interval: 1,
       repetition: 0,
       easeFactor: 2.5,
-      dueDate: new Date().toISOString().split('T')[0],
+      stability: 0,
+      difficulty: 0,
+      state: 0,
+      dueDate: getTodayDateString(),
       lapses: 0,
       skillTag: slot.skill,
       createdAt: new Date().toISOString(),
@@ -353,7 +357,7 @@ export const LessonCard: React.FC<LessonCardProps> = ({
                 <label className="text-xs font-semibold text-black">
                   Cloze Extraction Parser (with brackets [target] & Persian hint):
                 </label>
-                <span className="text-[11px] font-mono text-black/50">SM-2 Bridge</span>
+                <span className="text-[11px] font-mono text-black/50">FSRS Bridge</span>
               </div>
               <div className="flex gap-2">
                 <input

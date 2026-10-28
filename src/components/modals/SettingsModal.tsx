@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Download,
   Upload,
@@ -15,12 +15,13 @@ import {
   Flame,
   X,
   BookA,
+  FolderOpen,
 } from 'lucide-react';
 import { AppState, SystemSettings } from '../../types';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
-import { exportBackupJSON, parseBackupFile } from '../../services/storage';
+import { exportBackupJSON, parseBackupFile, getDesktopBridge } from '../../services/storage';
 import { playSound } from '../../services/audio';
 
 interface SettingsModalProps {
@@ -51,6 +52,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // محل فایل داده در نسخه دسکتاپ
+  const desktop = getDesktopBridge();
+  const [dataInfo, setDataInfo] = useState<{ dataFile: string; backupDir: string } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !desktop) return;
+    desktop.getDataInfo().then(setDataInfo).catch(() => setDataInfo(null));
+  }, [isOpen, desktop]);
 
   // Sound channels
   const isUiSoundOn = state.settings.soundEnabled;
@@ -102,9 +112,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </Badge>
           </div>
 
-          <p className="text-xs text-black/70 leading-relaxed">
-            All curriculum progress, cloze flashcards, error logs, and sprint sessions reside in your local browser vault. Export encrypted JSON snapshots periodically.
-          </p>
+          {desktop ? (
+            <div className="space-y-2">
+              <p className="text-xs text-black/70 leading-relaxed">
+                All progress is saved automatically to a file on this computer. Clearing browser data has no effect on it. A daily backup is kept (last 30 days).
+              </p>
+              {dataInfo && (
+                <div className="text-[11px] font-mono text-black/70 bg-white border border-black/15 rounded-xl p-2.5 space-y-1 break-all">
+                  <div>
+                    <span className="font-bold text-black">Data file:</span> {dataInfo.dataFile}
+                  </div>
+                  <div>
+                    <span className="font-bold text-black">Backups:</span> {dataInfo.backupDir}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-black/70 leading-relaxed">
+              All curriculum progress, cloze flashcards, error logs, and sprint sessions reside in your local browser vault. Export encrypted JSON snapshots periodically.
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button
@@ -124,6 +152,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             >
               Import Backup Snapshot
             </Button>
+            {desktop && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<FolderOpen className="w-3.5 h-3.5" />}
+                onClick={() => desktop.openDataFolder()}
+              >
+                Open Data Folder
+              </Button>
+            )}
             <input
               type="file"
               ref={fileInputRef}

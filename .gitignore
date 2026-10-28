@@ -36,3 +36,12 @@ pnpm-debug.log*
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local skill inspection & temporary sample code
+.agents/
+sample code/

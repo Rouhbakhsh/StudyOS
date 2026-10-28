@@ -152,12 +152,12 @@ export const UnitInspectorModal: React.FC<UnitInspectorModalProps> = ({
           )}
         </div>
 
-        {/* 3. Associated SM-2 Flashcards */}
+        {/* 3. Associated FSRS Flashcards */}
         <div className="bg-[#FFFDF5] border-2 border-black/15 rounded-2xl p-4 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono font-bold text-black uppercase flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-[#312E81]" />
-              <span>Associated SM-2 Cloze Cards ({unitFlashcards.length})</span>
+              <span>Associated FSRS Cloze Cards ({unitFlashcards.length})</span>
             </span>
           </div>
 

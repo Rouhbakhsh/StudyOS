@@ -60,6 +60,11 @@
   box-shadow: 1px 1px 0px 0px #000000;
 }
 
+.neo-btn:focus-visible {
+  outline: 2px solid #000000;
+  outline-offset: 2px;
+}
+
 /* 3D Card Flip Transformation */
 .perspective-1000 {
   perspective: 1000px;
@@ -118,4 +123,45 @@
 
 [class*="hover:bg-[#FFCDD2]"]:hover {
   background-color: #BFDBFE !important;
+}
+
+/* Animations for WelcomeScreen & Tactile UI (Imported from Desktop version) */
+@keyframes studyos-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes studyos-pop {
+  0% { opacity: 0; transform: scale(0.6) rotate(-8deg); }
+  60% { opacity: 1; transform: scale(1.08) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes studyos-twinkle {
+  0%, 100% { transform: scale(1) rotate(0); }
+  50% { transform: scale(1.22) rotate(16deg); }
+}
+
+@keyframes studyos-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.3); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1) rotate(90deg); }
+}
+
+.anim-rise {
+  animation: studyos-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.anim-pop {
+  animation: studyos-pop 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.anim-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: studyos-twinkle 2.4s ease-in-out infinite;
+}
+
+.anim-burst {
+  animation: studyos-burst 1.2s ease-out both;
 }

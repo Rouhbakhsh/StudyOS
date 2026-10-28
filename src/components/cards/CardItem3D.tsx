@@ -4,6 +4,7 @@ import { Flashcard } from '../../types';
 import { Badge } from '../common/Badge';
 import { playSound } from '../../services/audio';
 import { playOfflineAudio } from '../../services/oxfordService';
+import { getTodayDateString } from '../../utils/date';
 
 interface CardItem3DProps {
   card: Flashcard;
@@ -12,6 +13,71 @@ interface CardItem3DProps {
   soundEnabled: boolean;
   onNavigateToLexicon?: (word: string) => void;
   resetTrigger?: number;
+}
+
+function renderGapSpans(text: string) {
+  if (!text) return '';
+  const parts = text.split(/(\[\s*(?:\.{3,}|…)\s*\])/g);
+  if (parts.length === 1) return text;
+
+  return parts.map((part, i) => {
+    if (/^\[\s*(?:\.{3,}|…)\s*\]$/.test(part)) {
+      return (
+        <span
+          key={i}
+          className="inline-block px-1.5 py-0.5 mx-1 rounded border border-dashed border-[#312E81] bg-[#EEF2FF] text-[#312E81] font-mono font-bold text-xs align-middle"
+        >
+          [ ... ]
+        </span>
+      );
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
+function renderPromptWithGap(promptText: string) {
+  if (!promptText) return null;
+
+  if (promptText.includes('\n\n')) {
+    const [meaningPart, ...rest] = promptText.split('\n\n');
+    const sentencePart = rest.join('\n\n');
+    const isMeaning = meaningPart.trim().toLowerCase().startsWith('meaning:');
+    const cleanMeaning = meaningPart.trim().replace(/^meaning:\s*/i, '');
+
+    return (
+      <div className="flex flex-col items-center justify-center">
+        {isMeaning && (
+          <div className="text-[11px] sm:text-xs text-amber-950 bg-[#FFFBEB] border border-amber-300/80 rounded-xl px-2.5 py-1 mb-2 font-sans text-center leading-snug w-full">
+            <span className="font-mono not-italic font-black text-[9px] text-amber-800 uppercase block tracking-wider">
+              Meaning
+            </span>
+            {cleanMeaning}
+          </div>
+        )}
+        <div className="text-xs sm:text-sm font-semibold text-black leading-snug font-sans text-center">
+          {renderGapSpans(sentencePart)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-sm font-semibold text-black leading-relaxed font-sans text-center">
+      {renderGapSpans(promptText)}
+    </div>
+  );
+}
+
+function getCompletedSentence(promptText: string, targetPhrase: string): string {
+  if (!promptText || !targetPhrase) return '';
+  const sentence = promptText.includes('\n\n')
+    ? promptText.split('\n\n').slice(1).join('\n\n')
+    : promptText;
+  const clean = sentence.replace(/^["']|["']$/g, '');
+  if (/\[\s*(?:\.{3,}|…)\s*\]/.test(clean)) {
+    return clean.replace(/\[\s*(?:\.{3,}|…)\s*\]/g, targetPhrase);
+  }
+  return clean;
 }
 
 export const CardItem3D: React.FC<CardItem3DProps> = ({
@@ -91,7 +157,7 @@ export const CardItem3D: React.FC<CardItem3DProps> = ({
     card.sourceBookId === 'Oxford 5000' ||
     card.skillTag?.toLowerCase().includes('vocabulary');
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateString();
   const isDue = !card.dueDate || card.dueDate <= todayStr;
 
   return (
@@ -157,15 +223,18 @@ export const CardItem3D: React.FC<CardItem3DProps> = ({
               </div>
             </div>
 
-            <div className="py-4 text-center">
-              <div className="text-sm sm:text-base font-semibold text-black leading-relaxed font-sans line-clamp-3">
-                {card.prompt}
-              </div>
+            <div className="py-2.5 my-auto text-center flex-1 flex flex-col justify-center">
+              {renderPromptWithGap(card.prompt)}
             </div>
           </div>
 
-          <div className="pt-2 border-t border-black/10 flex items-center justify-end text-[11px] font-mono text-black/50">
-            <span>Ease: {card.easeFactor || 2.5}</span>
+          <div className="pt-2 border-t border-black/10 flex items-center justify-end text-[11px] font-mono text-black/50 gap-2">
+            <span>{card.interval || 1}d interval</span>
+            {card.stability !== undefined ? (
+              <span>• S: {card.stability}d</span>
+            ) : (
+              <span>• Ease: {card.easeFactor || 2.5}</span>
+            )}
           </div>
         </div>
 
@@ -268,6 +337,17 @@ export const CardItem3D: React.FC<CardItem3DProps> = ({
                 )}
               </div>
             )}
+
+            {/* جمله نمونه تکمیل‌شده با عبارت هدف */}
+            {(() => {
+              const completed = getCompletedSentence(card.prompt, card.targetPhrase);
+              if (!completed || completed === card.targetPhrase) return null;
+              return (
+                <div className="text-[11.5px] sm:text-xs italic text-slate-700 font-serif text-center px-2 line-clamp-2 max-w-full">
+                  "{completed}"
+                </div>
+              );
+            })()}
           </div>
 
           <div className="pt-2 border-t border-black/10 flex items-center justify-between text-[10px] font-mono text-black/70">

@@ -12,6 +12,7 @@ import { CardItem3D } from './CardItem3D';
 import { CardEditorModal } from './CardEditorModal';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
+import { getTodayDateString } from '../../utils/date';
 
 interface CardsViewProps {
   state: AppState;
@@ -43,7 +44,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
   // شمارنده ریست تمام کارت‌ها
   const [resetTrigger, setResetTrigger] = useState(0);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateString();
 
   // تشخیص کلیک در فضای خالی صفحه جهت ریست تمام فلش‌کارت‌ها به حالت پیش‌فرض
   useEffect(() => {
@@ -155,10 +156,10 @@ export const CardsView: React.FC<CardsViewProps> = ({
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-black tracking-tight mt-1.5 flex items-center gap-2">
               <Layers className="w-7 h-7 text-[#312E81]" />
-              <span>SM-2 Spaced Retrieval Cards ({state.flashcards.length})</span>
+              <span>FSRS Spaced Retrieval Cards ({state.flashcards.length})</span>
             </h1>
             <p className="text-xs text-black/70 font-mono mt-0.5">
-              Cloze deletions • Active recall prompts • SuperMemo SM-2 interval scheduling
+              Cloze deletions • Active recall prompts • Modern FSRS memory stability scheduling
             </p>
           </div>
 

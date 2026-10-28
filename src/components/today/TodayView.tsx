@@ -25,6 +25,7 @@ import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { OutputRitual } from './OutputRitual';
 import { ConsolidationDayView } from './ConsolidationDayView';
+import { getTodayDateString } from '../../utils/date';
 
 export interface TodayViewProps {
   state: AppState;
@@ -173,37 +174,63 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
   const [noteText, setNoteText] = useState(progress.keyNotes || '');
   const [showPracticeDrawer, setShowPracticeDrawer] = useState(false);
 
-  const [clozeList, setClozeList] = useState<string[]>(() =>
-    progress.extractedCloze ? [progress.extractedCloze] : ['']
-  );
+  const initialClozeList = progress.extractedClozeList && progress.extractedClozeList.length > 0
+    ? progress.extractedClozeList
+    : (progress.extractedCloze ? [progress.extractedCloze] : ['']);
+
+  const [clozeList, setClozeList] = useState<string[]>(initialClozeList);
 
   const unitKey = `${slot.bookId}_${slot.unit}`;
   const isDone = Boolean(progress.completed);
 
+  const onUpdateProgressRef = useRef(onUpdateProgress);
+  onUpdateProgressRef.current = onUpdateProgress;
+
   const [isRunning, setIsRunning] = useState(false);
   const [seconds, setSeconds] = useState(progress.timeSpentSeconds || 0);
-  const timerRef = useRef<any>(null);
+  const secondsRef = useRef(seconds);
+  secondsRef.current = seconds;
 
+  // تغییر اسلات یا روز: بازنشانی فقط با تغییر unitKey
   useEffect(() => {
-    setSeconds(progress.timeSpentSeconds || 0);
+    setIsRunning(false);
+    const initialSec = progress.timeSpentSeconds || 0;
+    setSeconds(initialSec);
+    secondsRef.current = initialSec;
     setNoteText(progress.keyNotes || '');
-    if (progress.extractedCloze && clozeList[0] === '') {
-      setClozeList([progress.extractedCloze]);
-    }
-  }, [slot.bookId, slot.unit, progress.timeSpentSeconds, progress.keyNotes, progress.extractedCloze]);
+    setClozeList(
+      progress.extractedClozeList && progress.extractedClozeList.length > 0
+        ? progress.extractedClozeList
+        : (progress.extractedCloze ? [progress.extractedCloze] : [''])
+    );
+  }, [unitKey]);
 
+  // چرخه اجرای تایمر - فقط وابسته به isRunning و unitKey
   useEffect(() => {
-    if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
+    if (!isRunning) return;
+
+    const intervalId = window.setInterval(() => {
+      const next = secondsRef.current + 1;
+      secondsRef.current = next;
+      setSeconds(next);
+      if (next % 10 === 0) {
+        onUpdateProgressRef.current(unitKey, { timeSpentSeconds: next });
+      }
+    }, 1000);
+
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      window.clearInterval(intervalId);
     };
-  }, [isRunning]);
+  }, [isRunning, unitKey]);
+
+  // ذخیره زمان سپری‌شده در هنگام unmount
+  useEffect(() => {
+    return () => {
+      if (secondsRef.current > 0) {
+        onUpdateProgressRef.current(unitKey, { timeSpentSeconds: secondsRef.current });
+      }
+    };
+  }, [unitKey]);
 
   const formatTimer = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -211,11 +238,22 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
     return `${String(mins).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  const handleToggleTimer = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isRunning) {
+      setIsRunning(false);
+      onUpdateProgressRef.current(unitKey, { timeSpentSeconds: secondsRef.current });
+    } else {
+      setIsRunning(true);
+    }
+  };
+
   const handleResetTimer = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsRunning(false);
     setSeconds(0);
-    onUpdateProgress(unitKey, { timeSpentSeconds: 0 });
+    secondsRef.current = 0;
+    onUpdateProgressRef.current(unitKey, { timeSpentSeconds: 0 });
   };
 
   const handleToggleComplete = (e?: React.MouseEvent) => {
@@ -262,7 +300,7 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
             {isDone ? <Check className="w-4 h-4 stroke-[3]" /> : <Circle className="w-4 h-4 text-black/20" />}
           </button>
 
-          <span className="font-mono text-xs font-black text-black/50 shrink-0">
+          <span className="font-mono text-xs font-black text-black/70 shrink-0">
             #{index + 1}
           </span>
 
@@ -289,10 +327,7 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
           <div className="h-8 sm:h-auto flex items-center bg-white sm:bg-black/5 rounded-xl border-2 sm:border border-black sm:border-black/20 shadow-[1px_1px_0px_0px_#000] sm:shadow-none p-0.5 font-mono text-xs">
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsRunning(!isRunning);
-              }}
+              onClick={handleToggleTimer}
               className={`h-full sm:h-auto px-2 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors ${
                 isRunning ? 'bg-[#FFCDD2] text-rose-950 animate-pulse' : 'hover:bg-white text-black/80'
               }`}
@@ -306,10 +341,10 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
               <button
                 type="button"
                 onClick={handleResetTimer}
-                className="p-1 text-black/40 hover:text-black hover:bg-white rounded cursor-pointer transition-colors"
+                className="p-1.5 text-black/60 hover:text-black hover:bg-white rounded cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
                 title="Reset Timer to 00:00"
               >
-                <RotateCcw className="w-3 h-3" />
+                <RotateCcw className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -318,7 +353,7 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
             <button
               type="button"
               onClick={() => setShowNotes(!showNotes)}
-              className={`h-8 px-2.5 sm:px-2 rounded-xl border-2 border-black font-mono text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 shadow-[1px_1px_0px_0px_#000] ${
+              className={`h-8 px-2.5 sm:px-2 rounded-xl border-2 border-black font-mono text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 shadow-[1px_1px_0px_0px_#000] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-1 ${
                 progress.keyNotes || showNotes
                   ? 'bg-[#FFF3C4] text-amber-950'
                   : 'bg-white hover:bg-black/5 text-black/70'
@@ -336,7 +371,7 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
               className="h-8 w-8 sm:h-auto sm:w-auto p-0 sm:p-1.5 rounded-xl border-2 sm:border border-black sm:border-black/20 hover:border-black hover:bg-[#E0E7FF] text-[#312E81] bg-white sm:bg-transparent shadow-[1px_1px_0px_0px_#000] sm:shadow-none active:translate-x-0.5 active:translate-y-0.5 sm:active:translate-x-0 sm:active:translate-y-0 transition-all flex items-center justify-center cursor-pointer"
               title="Inspect Unit Material"
             >
-              <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <BookOpen className="w-4 h-4" />
             </button>
 
             <button
@@ -475,7 +510,12 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
                       disabled={!canRemove}
                       onClick={() => {
                         if (canRemove) {
-                          setClozeList((prev) => prev.filter((_, i) => i !== cIdx));
+                          const next = clozeList.filter((_, i) => i !== cIdx);
+                          setClozeList(next);
+                          onUpdateProgress(unitKey, {
+                            extractedClozeList: next,
+                            extractedCloze: next[0] || '',
+                          });
                         }
                       }}
                       className={`w-5 h-8 flex items-center justify-center text-lg font-mono font-bold select-none shrink-0 transition-colors ${
@@ -497,9 +537,10 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
                           const next = [...clozeList];
                           next[cIdx] = e.target.value;
                           setClozeList(next);
-                          if (cIdx === 0) {
-                            onUpdateProgress(unitKey, { extractedCloze: e.target.value });
-                          }
+                          onUpdateProgress(unitKey, {
+                            extractedClozeList: next,
+                            extractedCloze: next[0] || '',
+                          });
                         }}
                         className="w-full bg-white border border-black/20 focus:border-black rounded-xl pl-3 pr-8 py-2 text-xs text-black placeholder:text-black/35 focus:outline-none font-sans"
                       />
@@ -510,9 +551,10 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
                             const next = [...clozeList];
                             next[cIdx] = '';
                             setClozeList(next);
-                            if (cIdx === 0) {
-                              onUpdateProgress(unitKey, { extractedCloze: '' });
-                            }
+                            onUpdateProgress(unitKey, {
+                              extractedClozeList: next,
+                              extractedCloze: next[0] || '',
+                            });
                           }}
                           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-black/30 hover:text-black/70 p-0.5 cursor-pointer transition-colors"
                           title="Clear text"
@@ -542,7 +584,10 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
                           interval: 1,
                           repetition: 0,
                           easeFactor: 2.5,
-                          dueDate: new Date().toISOString().split('T')[0],
+                          stability: 0,
+                          difficulty: 0,
+                          state: 0,
+                          dueDate: getTodayDateString(),
                           lapses: 0,
                           skillTag: slot.skill,
                           createdAt: new Date().toISOString(),
@@ -561,7 +606,14 @@ const CompactMissionRow: React.FC<CompactMissionRowProps> = ({
 
               <button
                 type="button"
-                onClick={() => setClozeList((prev) => [...prev, ''])}
+                onClick={() => {
+                  const next = [...clozeList, ''];
+                  setClozeList(next);
+                  onUpdateProgress(unitKey, {
+                    extractedClozeList: next,
+                    extractedCloze: next[0] || '',
+                  });
+                }}
                 className="flex items-center gap-1.5 text-xs font-mono font-bold text-[#312E81] hover:text-black cursor-pointer pt-1"
               >
                 <span className="w-4 h-4 rounded-md border border-black flex items-center justify-center text-xs font-bold leading-none bg-white shadow-2xs">
@@ -623,7 +675,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
     else onNavigateToStudio();
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateString();
   const dueCards = state.flashcards.filter((c) => !c.dueDate || c.dueDate <= todayStr);
   const dueCount = dueCards.length;
 
@@ -737,7 +789,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
             <h1 className="text-2xl sm:text-3xl font-black text-black tracking-tight flex items-center gap-2">
               <Flame className="w-6 h-6 sm:w-7 sm:h-7 text-[#FF2A5F] shrink-0" />
               <span>Day {selectedDay}</span>
-              <span className="text-black/40 text-base sm:text-lg font-mono font-medium">/ {TOTAL_DAYS}</span>
+              <span className="text-black/60 text-base sm:text-lg font-mono font-medium">/ {TOTAL_DAYS}</span>
             </h1>
           </div>
 
@@ -871,7 +923,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
                         : 'border-black/15 bg-neutral-50 hover:bg-neutral-100 text-black/60'
                     }`}
                   >
-                    <div className="text-[9px] sm:text-[10px] leading-none text-black/50">D{i + 1}</div>
+                    <div className="text-[9px] sm:text-[10px] leading-none text-black/70 font-semibold">D{i + 1}</div>
                     <div className="text-[11px] sm:text-xs font-bold leading-tight mt-0.5">
                       {isConsolidation ? 'Rev' : dNum}
                     </div>
@@ -905,10 +957,10 @@ export const TodayView: React.FC<TodayViewProps> = ({
               </div>
 
               <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-between text-[10px] font-mono text-black/60 px-0.5 gap-x-2 gap-y-0.5">
-                <span>Grammar ({weekGrammarDone}/${weekGrammarTotal})</span>
-                <span>Vocab ({weekVocabDone}/${weekVocabTotal})</span>
-                <span>Phrase ({weekPhraseDone}/${weekPhraseTotal})</span>
-                <span>Accent ({weekAcousticDone}/${weekAcousticTotal})</span>
+                <span>Grammar ({weekGrammarDone}/{weekGrammarTotal})</span>
+                <span>Vocab ({weekVocabDone}/{weekVocabTotal})</span>
+                <span>Phrase ({weekPhraseDone}/{weekPhraseTotal})</span>
+                <span>Accent ({weekAcousticDone}/{weekAcousticTotal})</span>
               </div>
             </div>
           </div>
@@ -958,7 +1010,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
                   TASK #0 • PRIORITY
                 </span>
                 <Badge variant="lavender" size="md">
-                  SM-2 Spaced Retrieval
+                  FSRS Spaced Retrieval
                 </Badge>
                 <Badge variant="neutral" size="sm">
                   Overload Guard ({state.settings.dailyReviewCap}/day)

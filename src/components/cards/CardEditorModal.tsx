@@ -3,7 +3,8 @@ import { Layers, Sparkles } from 'lucide-react';
 import { Flashcard } from '../../types';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
-import { parseClozeString } from '../../services/sm2';
+import { parseClozeString } from '../../services/fsrs';
+import { getTodayDateString } from '../../utils/date';
 
 interface CardEditorModalProps {
   isOpen: boolean;
@@ -59,7 +60,7 @@ export const CardEditorModal: React.FC<CardEditorModalProps> = ({
   const handleSave = () => {
     if (!targetPhrase.trim() || !prompt.trim()) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayDateString();
 
     const card: Flashcard = cardToEdit
       ? {
@@ -95,7 +96,7 @@ export const CardEditorModal: React.FC<CardEditorModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={cardToEdit ? 'Edit Flashcard (Non-Destructive)' : 'Create New SM-2 Cloze Card'}
+      title={cardToEdit ? 'Edit Flashcard (Non-Destructive)' : 'Create New FSRS Cloze Card'}
       subtitle={
         cardToEdit
           ? 'Scheduling intervals & ease factor are preserved.'

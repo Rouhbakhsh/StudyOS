@@ -9,6 +9,23 @@ export interface SearchIndexItem {
   tags: string[];  // OPAL_S, OPAL_W
 }
 
+export interface CollocationGroup {
+  category: string;
+  items: string[];
+}
+
+export interface SynonymStudyItem {
+  title?: string;
+  overview?: string;
+  words?: string[];
+  items?: {
+    word: string;
+    examples?: string[];
+  }[];
+  which_word?: string;
+  patterns?: string[];
+}
+
 // تایپ مربوط به تعاریف و معانی مختلف کلمه
 export interface SenseItem {
   cefr?: string;
@@ -18,6 +35,15 @@ export interface SenseItem {
   examples?: string[];
   extra_examples?: string[];
   collocations?: string[];
+  collocations_grouped?: CollocationGroup[];
+  synonyms?: string[];
+  opposites?: string[];
+}
+
+export interface OxfordIdiom {
+  phrase: string;
+  definition?: string;
+  examples?: string[];
 }
 
 // تایپ جامع و کامل لغت از فایل oxford5000_offline.min.json
@@ -36,5 +62,10 @@ export interface OxfordWordDetail {
     us?: string;
   };
   verb_forms?: string[];
+  word_origin?: string;
+  synonym_study?: SynonymStudyItem;
+  synonyms?: string[];
+  opposites?: string[];
+  idioms?: OxfordIdiom[];
   senses: SenseItem[];
 }

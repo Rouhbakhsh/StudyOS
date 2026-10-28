@@ -67,6 +67,7 @@ export interface UnitProgress {
   sentences?: [string, string, string];
   // Vocabulary sub-gates
   extractedCloze?: string;
+  extractedClozeList?: string[];
   scenarioDone?: boolean;
   // Pronunciation sub-gates
   shadowingDone?: boolean;
@@ -91,6 +92,11 @@ export interface Flashcard {
   // مسیر فایل‌های صوتی محلی آکسفورد (آفلاین)
   audioUk?: string;
   audioUs?: string;
+  // FSRS fields
+  stability?: number;
+  difficulty?: number;
+  state?: number; // 0: New, 1: Learning, 2: Review, 3: Relearning
+  lastReview?: string;
 }
 
 export type MistakeCategory =
@@ -167,6 +173,10 @@ export interface SystemSettings {
   currentActiveDay: number;
   autoBackupEnabled: boolean;
   lastBackupDate?: string;
+  lastOpenedDate?: string;
+  onboardedAt?: string;
+  planStartDate?: string;
+  learnerName?: string;
 }
 
 export interface ActiveTodayRitual {
@@ -187,4 +197,5 @@ export interface AppState {
   timerSessions: TimerSession[];
   consolidationRecords: Record<number, ConsolidationWeekRecord>; // key: weekNumber
   todayRitual: Record<number, ActiveTodayRitual>; // key: dayNumber
+  lexiconNotes?: Record<string, string>; // Persian translations & notes
 }

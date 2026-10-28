@@ -14,6 +14,7 @@ import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { playSound } from '../../services/audio';
 import { downloadFile } from '../../services/storage';
+import { getTodayDateString } from '../../utils/date';
 
 interface ConsolidationDayViewProps {
   dayNumber: number;
@@ -34,16 +35,17 @@ export const ConsolidationDayView: React.FC<ConsolidationDayViewProps> = ({
   onNavigateToMistakes,
   onUpdateConsolidation,
 }) => {
-  const weekRecord = state.consolidationRecords[weekNumber] || {
-    flashcardsCleared: false,
-    mistakesReviewed: false,
-    shadowingDone: false,
-    shadowingSeconds: 0,
-    completed: false,
+  const rawRecord = state.consolidationRecords?.[weekNumber];
+  const weekRecord = {
+    flashcardsCleared: Boolean(rawRecord?.flashcardsCleared),
+    mistakesReviewed: Boolean(rawRecord?.mistakesReviewed),
+    shadowingDone: Boolean(rawRecord?.shadowingDone),
+    shadowingSeconds: Number(rawRecord?.shadowingSeconds || 0),
+    completed: Boolean(rawRecord?.completed),
   };
 
   // Due flashcards count
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateString();
   const dueCount = state.flashcards.filter((c) => !c.dueDate || c.dueDate <= todayStr).length;
   const unresolvedMistakesCount = state.mistakes.filter((m) => m.status === 'unresolved').length;
 
@@ -105,7 +107,7 @@ export const ConsolidationDayView: React.FC<ConsolidationDayViewProps> = ({
   const handleExportCheatsheet = () => {
     const lines: string[] = [];
     lines.push(`# StudyOS Weekly Synthesis Cheatsheet — Week ${weekNumber} (Phase ${phase})`);
-    lines.push(`Generated: ${new Date().toLocaleDateString()} | Target: A1 → B2/C1 Deliberate Practice`);
+    lines.push(`Generated: ${new Date().toLocaleDateString('en-US')} | Target: A1 → B2/C1 Deliberate Practice`);
     lines.push('');
     lines.push('---');
     lines.push('');
@@ -260,7 +262,7 @@ export const ConsolidationDayView: React.FC<ConsolidationDayViewProps> = ({
             </div>
             <h3 className="text-sm font-bold text-black mb-1">Review Mistake Vault</h3>
             <p className="text-xs text-black/70 mb-3">
-              Review unresolved syntax and collocation slips. Bridge critical errors to SM-2 cards.
+              Review unresolved syntax and collocation slips. Bridge critical errors to FSRS cards.
             </p>
 
             <div className="bg-black/5 rounded-xl p-2.5 mb-3 text-center">

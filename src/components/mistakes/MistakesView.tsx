@@ -13,6 +13,7 @@ import { MistakeModal } from './MistakeModal';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { playSound } from '../../services/audio';
+import { getTodayDateString } from '../../utils/date';
 
 interface MistakesViewProps {
   state: AppState;
@@ -69,7 +70,10 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
       interval: 1,
       repetition: 0,
       easeFactor: 2.5,
-      dueDate: new Date().toISOString().split('T')[0],
+      stability: 0,
+      difficulty: 0,
+      state: 0,
+      dueDate: getTodayDateString(),
       lapses: 0,
       skillTag: 'Grammar',
       createdAt: new Date().toISOString(),
@@ -104,7 +108,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
               <span>Mistake Vault & Flashcard Bridge</span>
             </h1>
             <p className="text-xs text-black/70 font-mono mt-0.5">
-              Analyze grammatical, prepositional, and collocation errors • Bridge directly to SM-2 spaced repetition
+              Analyze grammatical, prepositional, and collocation errors • Bridge directly to FSRS spaced repetition
             </p>
           </div>
 

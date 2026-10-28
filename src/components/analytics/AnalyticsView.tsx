@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AppState } from '../../types';
 import { Badge } from '../common/Badge';
+import { getTodayDateString } from '../../utils/date';
 
 interface AnalyticsViewProps {
   state: AppState;
@@ -80,8 +81,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ state }) => {
   const outputRatio = totalStudySeconds > 0 ? Math.round((outputSeconds / totalStudySeconds) * 100) : 50;
   const inputRatio = 100 - outputRatio;
 
-  // 4. Memory Bank Health (SM-2)
-  const todayStr = new Date().toISOString().split('T')[0];
+  // 4. Memory Bank Health (FSRS)
+  const todayStr = getTodayDateString();
   const dueCards = state.flashcards.filter((c) => !c.dueDate || c.dueDate <= todayStr);
   const matureCards = state.flashcards.filter((c) => (c.interval || 0) >= 21);
   const learningCards = state.flashcards.filter((c) => (c.interval || 0) < 21);
@@ -276,15 +277,15 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ state }) => {
         </div>
       </div>
 
-      {/* 3. Memory Bank (SM-2) & Cognitive Time Analytics */}
+      {/* 3. Memory Bank (FSRS) & Cognitive Time Analytics */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: Memory Retention (SM-2 Engine) */}
+        {/* Left: Memory Retention (FSRS Engine) */}
         <div className="bg-[#FFFDF5] border-2 border-black rounded-3xl p-6 neo-shadow space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-black/10">
             <div className="flex items-center gap-2">
               <Brain className="w-5 h-5 text-[#312E81]" />
               <h2 className="text-sm font-bold uppercase tracking-wider font-mono text-black">
-                Memory Retention & SM-2 Health
+                Memory Retention & FSRS Health
               </h2>
             </div>
             <Badge variant="indigo" size="sm">

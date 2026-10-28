@@ -11,12 +11,23 @@ import {
   ChevronUp,
   Lightbulb,
   ArrowLeft,
+  Plus,
+  Sparkles,
+  History,
 } from 'lucide-react';
 import { SearchIndexItem, OxfordWordDetail, SenseItem } from '../../types/oxford';
 import { AppState, Flashcard } from '../../types';
 import * as oxfordService from '../../services/oxfordService';
 import { showToast } from '../../services/notification';
 import { Badge } from '../common/Badge';
+import {
+  buildOxfordFlashcardPrompt,
+  buildOxfordIdiomFlashcard,
+  buildOxfordCollocationFlashcard,
+  getCollocationChunkTitle,
+  buildSentenceClozeFlashcard,
+} from '../../utils/cloze';
+import { getTodayDateString } from '../../utils/date';
 
 export interface LexiconViewProps {
   state: AppState;
@@ -25,6 +36,7 @@ export interface LexiconViewProps {
   initialSearchQuery?: string;
   onAddWord?: (word: any) => void;
   onDeleteWord?: (id: string) => void;
+  onSaveNote?: (word: string, note: string) => void;
 }
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -86,6 +98,7 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
   state,
   onPushToFlashcards,
   onRemoveFromFlashcards,
+  onSaveNote,
   initialSearchQuery = '',
 }) => {
   const [indexItems, setIndexItems] = useState<SearchIndexItem[]>([]);
@@ -109,6 +122,20 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
 
   const [showVerbForms, setShowVerbForms] = useState<boolean>(false);
 
+  // وضعیت باز و بسته بودن بخش‌های کرکره‌ای آکسفورد (Accordions) - پیش‌فرض همه بسته
+  const [expandedExtraExamples, setExpandedExtraExamples] = useState<Record<number, boolean>>({});
+  const [expandedCollocations, setExpandedCollocations] = useState<Record<number, boolean>>({});
+  const [showSynonymStudy, setShowSynonymStudy] = useState<boolean>(false);
+  const [showWordOrigin, setShowWordOrigin] = useState<boolean>(false);
+
+  const toggleExtraExamples = (sIdx: number) => {
+    setExpandedExtraExamples((prev) => ({ ...prev, [sIdx]: !prev[sIdx] }));
+  };
+
+  const toggleCollocations = (sIdx: number) => {
+    setExpandedCollocations((prev) => ({ ...prev, [sIdx]: !prev[sIdx] }));
+  };
+
   const [displayCount, setDisplayCount] = useState<number>(60);
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const lastSelectedQueryRef = useRef<string>('');
@@ -116,9 +143,10 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
   const [customPersianNote, setCustomPersianNote] = useState<string>('');
   const [savedNotes, setSavedNotes] = useState<Record<string, string>>(() => {
     try {
-      return JSON.parse(localStorage.getItem('oxford_persian_notes') || '{}');
+      const local = JSON.parse(localStorage.getItem('oxford_persian_notes') || '{}');
+      return { ...local, ...(state.lexiconNotes || {}) };
     } catch {
-      return {};
+      return { ...(state.lexiconNotes || {}) };
     }
   });
 
@@ -160,21 +188,21 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
     if (selectedWord) {
       setLoadingDetail(true);
       setShowNoteInput(false);
-      const fetcher =
-        (oxfordService as any).getWordDetail ||
-        (oxfordService as any).getWordDetailById;
-
-      if (typeof fetcher === 'function') {
-        fetcher(selectedWord.id, selectedWord.w).then((detail: OxfordWordDetail | null) => {
-          setActiveWordDetail(detail);
-          if (detail && detail.word) {
-            setCustomPersianNote(savedNotes[detail.word.toLowerCase()] || '');
-          }
-          setLoadingDetail(false);
-        });
-      } else {
+      setShowVerbForms(false);
+      setShowSynonymStudy(false);
+      setShowWordOrigin(false);
+      setExpandedExtraExamples({});
+      setExpandedCollocations({});
+      oxfordService.getWordDetailById(selectedWord.id).then((detail: OxfordWordDetail | null) => {
+        setActiveWordDetail(detail);
+        if (detail && detail.word) {
+          const w = detail.word.toLowerCase();
+          setCustomPersianNote(state.lexiconNotes?.[w] ?? savedNotes[w] ?? '');
+        }
         setLoadingDetail(false);
-      }
+      }).catch(() => {
+        setLoadingDetail(false);
+      });
     }
   }, [selectedWord]);
 
@@ -195,8 +223,10 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
   const handleNoteChange = (text: string) => {
     setCustomPersianNote(text);
     if (activeWordDetail && activeWordDetail.word) {
-      const updated = { ...savedNotes, [activeWordDetail.word.toLowerCase()]: text };
+      const wordKey = activeWordDetail.word.toLowerCase();
+      const updated = { ...savedNotes, [wordKey]: text };
       setSavedNotes(updated);
+      onSaveNote?.(wordKey, text);
       try {
         localStorage.setItem('oxford_persian_notes', JSON.stringify(updated));
       } catch {}
@@ -277,16 +307,62 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
 
   const handleJumpToLetter = (letter: string) => {
     setSearchQuery('');
-    const target = indexItems.find((item) =>
-      (item.w || '').toUpperCase().startsWith(letter)
-    );
-    if (target) {
+
+    // پیدا کردن اولین کلمه‌ای که با این حرف شروع می‌شود با لحاظ فیلترهای فعال
+    const targetIndex = indexItems.findIndex((item) => {
+      const itemLvl = (item.lvl || '').toUpperCase();
+      if (selectedLevel !== 'all' && itemLvl !== selectedLevel.toUpperCase()) {
+        return false;
+      }
+      if (onlyAcademic && !item.tags?.includes('academic')) {
+        return false;
+      }
+      return (item.w || '').toUpperCase().startsWith(letter);
+    });
+
+    if (targetIndex !== -1) {
+      const target = indexItems[targetIndex];
       setSelectedWord({ id: target.id, w: target.w || '' });
-      setDisplayCount(60);
+      // گسترش محدوده رندر تا آیتم مورد نظر به همراه بافر کافی
+      setDisplayCount((prev) => Math.max(prev, targetIndex + 100));
+
       setTimeout(() => {
         const el = document.getElementById(`word-item-${target.id}`);
-        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      }, 50);
+        if (el && listContainerRef.current) {
+          const containerTop = listContainerRef.current.getBoundingClientRect().top;
+          const elTop = el.getBoundingClientRect().top;
+          listContainerRef.current.scrollTo({
+            top: listContainerRef.current.scrollTop + (elTop - containerTop) - 8,
+            behavior: 'smooth',
+          });
+        } else if (el) {
+          el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+      }, 70);
+    }
+  };
+
+  // پرش مستقیم به لغت دیگر با کلیک روی مترادف یا متضاد
+  const handleSelectWordByName = (targetName: string) => {
+    if (!targetName) return;
+    const clean = targetName.trim().toLowerCase();
+    setSearchQuery(clean);
+    setMobileView('detail');
+
+    const found =
+      indexItems.find((it) => (it.w || '').toLowerCase() === clean) ||
+      indexItems.find((it) => (it.w || '').toLowerCase().startsWith(clean));
+
+    if (found) {
+      setSelectedWord({ id: found.id, w: found.w || '' });
+      if (listContainerRef.current) {
+        setTimeout(() => {
+          const el = document.getElementById(`word-item-${found.id}`);
+          if (el) {
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }, 80);
+      }
     }
   };
 
@@ -316,26 +392,23 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
         onRemoveFromFlashcards(word);
       }
     } else {
-      const firstSense = detail.senses?.[0];
-      const example = firstSense?.examples?.[0];
-
-      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-
-      const promptText = example
-        ? example.replace(regex, '[ ... ]')
-        : `Define the word: "${firstSense?.definition || word}" [ ... ]`;
+      const promptText = buildOxfordFlashcardPrompt(detail);
+      const wordKey = (detail.word || '').toLowerCase();
+      const hintText = customPersianNote.trim() || savedNotes[wordKey]?.trim() || '';
 
       const newCard: Flashcard = {
         id: `card-ox-${detail.id}-${Date.now().toString(36)}`,
         prompt: promptText,
         targetPhrase: word,
-        persianHint: customPersianNote.trim() || firstSense?.definition || '',
+        persianHint: hintText,
         sourceBookId: 'Oxford 5000',
         interval: 1,
         repetition: 0,
         easeFactor: 2.5,
-        dueDate: new Date().toISOString().split('T')[0],
+        stability: 0,
+        difficulty: 0,
+        state: 0,
+        dueDate: getTodayDateString(),
         lapses: 0,
         skillTag: detail.academic_tags?.length > 0 ? 'Academic Vocabulary' : 'Advanced Vocabulary',
         createdAt: new Date().toISOString(),
@@ -554,6 +627,49 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                       </button>
                     )}
                   </div>
+
+                  {/* مترادف‌ها و متضادهای سطح واژه - همگی لینک‌های کلیک‌پذیر */}
+                  {((activeWordDetail.synonyms && activeWordDetail.synonyms.length > 0) ||
+                    (activeWordDetail.opposites && activeWordDetail.opposites.length > 0)) && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                      {activeWordDetail.synonyms && activeWordDetail.synonyms.length > 0 && (
+                        <div className="flex items-center gap-1.5 bg-[#C8E6C9] border border-black/20 rounded-lg px-2.5 py-1 font-mono flex-wrap">
+                          <span className="font-bold text-emerald-950">SYN:</span>
+                          {activeWordDetail.synonyms.map((syn, idx) => (
+                            <React.Fragment key={idx}>
+                              {idx > 0 && <span className="text-emerald-700/60 font-sans">,</span>}
+                              <button
+                                type="button"
+                                onClick={() => handleSelectWordByName(syn)}
+                                className="font-bold text-emerald-950 hover:text-emerald-700 underline decoration-emerald-500 hover:decoration-emerald-800 underline-offset-2 cursor-pointer transition-colors"
+                                title={`Jump to ${syn}`}
+                              >
+                                {syn}
+                              </button>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      )}
+                      {activeWordDetail.opposites && activeWordDetail.opposites.length > 0 && (
+                        <div className="flex items-center gap-1.5 bg-[#FFCDD2] border border-black/20 rounded-lg px-2.5 py-1 font-mono flex-wrap">
+                          <span className="font-bold text-rose-950">OPP:</span>
+                          {activeWordDetail.opposites.map((opp, idx) => (
+                            <React.Fragment key={idx}>
+                              {idx > 0 && <span className="text-rose-700/60 font-sans">,</span>}
+                              <button
+                                type="button"
+                                onClick={() => handleSelectWordByName(opp)}
+                                className="font-bold text-rose-950 hover:text-rose-700 underline decoration-rose-500 hover:decoration-rose-800 underline-offset-2 cursor-pointer transition-colors"
+                                title={`Jump to ${opp}`}
+                              >
+                                {opp}
+                              </button>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* ابزارهای گوشه: لامپ هینت شناور + دکمه فلش‌کارت */}
@@ -661,6 +777,107 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                 </div>
               )}
 
+              {/* جعبه جامع بررسی مترادف‌ها (Synonym Study Box - همانند وب‌سایت آکسفورد) */}
+              {activeWordDetail.synonym_study && (
+                <div className="rounded-2xl border-2 border-orange-300 bg-[#FFF9F2] p-4 sm:p-5 neo-shadow-sm space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 bg-[#EA580C] rounded-full shrink-0" />
+                      <span className="font-mono font-black text-xs uppercase tracking-wider text-orange-950 flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-orange-600" />
+                        Synonyms Study
+                      </span>
+                      {activeWordDetail.synonym_study.words && activeWordDetail.synonym_study.words.length > 0 && (
+                        <span className="font-mono text-xs font-bold text-orange-900 inline-flex items-center gap-1 flex-wrap">
+                          <span>(</span>
+                          {activeWordDetail.synonym_study.words.map((w, wIdx) => (
+                            <React.Fragment key={wIdx}>
+                              {wIdx > 0 && <span className="text-orange-400 font-normal">▪</span>}
+                              <button
+                                type="button"
+                                onClick={() => handleSelectWordByName(w)}
+                                className="text-orange-900 hover:text-orange-950 underline decoration-orange-400 hover:decoration-orange-800 underline-offset-2 cursor-pointer transition-colors"
+                                title={`Jump to definition of ${w}`}
+                              >
+                                {w}
+                              </button>
+                            </React.Fragment>
+                          ))}
+                          <span>)</span>
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowSynonymStudy(!showSynonymStudy)}
+                      className="text-orange-950 hover:text-black font-mono text-xs font-bold flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-orange-300 shadow-2xs"
+                    >
+                      <span>{showSynonymStudy ? 'Collapse' : 'Expand'}</span>
+                      {showSynonymStudy ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+
+                  {activeWordDetail.synonym_study.overview && (
+                    <p className="text-xs text-orange-950/80 leading-relaxed font-sans">
+                      {activeWordDetail.synonym_study.overview}
+                    </p>
+                  )}
+
+                  {showSynonymStudy && (
+                    <div className="space-y-3 pt-3 border-t border-orange-200 text-xs animate-in fade-in duration-150">
+                      {/* تفکیک کلمات با مثال‌ها */}
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {activeWordDetail.synonym_study.items?.map((item, itmIdx) => (
+                          <div key={itmIdx} className="pl-3 border-l-2 border-orange-400 space-y-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSelectWordByName(item.word)}
+                              className="font-bold text-orange-950 hover:text-black font-sans text-xs underline decoration-orange-400 hover:decoration-orange-800 underline-offset-2 cursor-pointer transition-colors text-left"
+                              title={`Jump to definition of ${item.word}`}
+                            >
+                              {item.word}
+                            </button>
+                            {item.examples?.map((ex, exIdx) => (
+                              <p key={exIdx} className="text-[11.5px] italic text-slate-700 font-serif">
+                                • {ex}
+                              </p>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Which word? نکته تمایز معنایی */}
+                      {activeWordDetail.synonym_study.which_word && (
+                        <div className="bg-white p-3 rounded-xl border border-orange-200 space-y-1">
+                          <span className="font-bold text-orange-950 text-xs block font-mono uppercase">
+                            Which Word?
+                          </span>
+                          <p className="text-xs text-slate-800 leading-relaxed font-sans">
+                            {activeWordDetail.synonym_study.which_word}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Patterns الگوهای گرامری */}
+                      {activeWordDetail.synonym_study.patterns && activeWordDetail.synonym_study.patterns.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="font-mono text-[11px] font-bold text-orange-900 uppercase">
+                            Patterns:
+                          </span>
+                          <ul className="space-y-1">
+                            {activeWordDetail.synonym_study.patterns.map((pat, pIdx) => (
+                              <li key={pIdx} className="text-xs font-mono text-orange-950 bg-white px-2 py-0.5 rounded border border-orange-100">
+                                • {pat}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* بخش تعاریف واژه با اولویت بصری دقیق الگوها */}
               <div className="space-y-5 pt-1">
                 {activeWordDetail.senses?.map((sense, sIdx) => (
@@ -705,32 +922,317 @@ export const LexiconView: React.FC<LexiconViewProps> = ({
                         {sense.examples.map((ex, exIdx) => (
                           <div
                             key={exIdx}
-                            className="text-[13px] sm:text-[13.5px] italic text-slate-700 pl-3 border-l-2 border-[#312E81]/40 leading-relaxed font-serif"
+                            className="group flex items-start justify-between gap-2 text-[13px] sm:text-[13.5px] italic text-slate-700 pl-3 border-l-2 border-[#312E81]/40 leading-relaxed font-serif bg-slate-50/50 hover:bg-slate-50 p-1.5 rounded-r-xl transition-colors"
                           >
-                            "{ex}"
+                            <span className="flex-1">"{ex}"</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!activeWordDetail) return;
+                                const card = buildSentenceClozeFlashcard(
+                                  ex,
+                                  activeWordDetail.word,
+                                  sense.definition,
+                                  activeWordDetail.verb_forms,
+                                  activeWordDetail.audio,
+                                  customPersianNote,
+                                  exIdx
+                                );
+                                onPushToFlashcards(card);
+                                showToast(`Sentence mined to Flashcards!`, 'success');
+                              }}
+                              className="opacity-0 group-hover:opacity-100 sm:opacity-50 hover:opacity-100 p-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-[#312E81] border border-indigo-200 transition-all cursor-pointer shrink-0 shadow-2xs"
+                              title="Mine sentence into a Cloze Flashcard"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         ))}
                       </div>
                     )}
 
-                    {sense.collocations && sense.collocations.length > 0 && (
-                      <div className="pl-4 sm:pl-5 pt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                        <span className="font-mono text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          Collocations:
-                        </span>
-                        {sense.collocations.map((col, cIdx) => (
-                          <span
-                            key={cIdx}
-                            className="font-mono text-[11px] bg-white border border-slate-300 rounded px-2 py-0.5 text-slate-800 shadow-2xs"
-                          >
-                            {col}
-                          </span>
-                        ))}
+                    {/* دکمه کرکره‌ای مثال‌های بیشتر (Extra Examples) */}
+                    {sense.extra_examples && sense.extra_examples.length > 0 && (
+                      <div className="pl-4 sm:pl-5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleExtraExamples(sIdx)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-orange-300 bg-[#FFF7ED] hover:bg-[#FFEDD5] text-[#C2410C] font-mono text-xs font-bold cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 shadow-2xs"
+                        >
+                          {expandedExtraExamples[sIdx] ? <ChevronUp className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                          <span>Extra Examples ({sense.extra_examples.length})</span>
+                        </button>
+                        {expandedExtraExamples[sIdx] && (
+                          <ul className="mt-2 space-y-1.5 pl-3 border-l-2 border-orange-400 bg-orange-50/40 p-3 rounded-r-xl animate-in fade-in duration-150">
+                            {sense.extra_examples.map((ee, eeIdx) => (
+                              <li key={eeIdx} className="group flex items-start justify-between gap-2 text-xs italic text-slate-800 leading-relaxed font-serif hover:bg-orange-100/50 p-1 rounded transition-colors">
+                                <span className="flex-1">• "{ee}"</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!activeWordDetail) return;
+                                    const card = buildSentenceClozeFlashcard(
+                                      ee,
+                                      activeWordDetail.word,
+                                      sense.definition,
+                                      activeWordDetail.verb_forms,
+                                      activeWordDetail.audio,
+                                      customPersianNote,
+                                      eeIdx
+                                    );
+                                    onPushToFlashcards(card);
+                                    showToast(`Extra example mined to Flashcards!`, 'success');
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 p-1 rounded bg-orange-100 hover:bg-orange-200 text-[#C2410C] border border-orange-300 transition-all cursor-pointer shrink-0 shadow-2xs"
+                                  title="Mine extra example into a Cloze Flashcard"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {/* دکمه کرکره‌ای دیکشنری کالوکیشن‌ها (Oxford Collocations Dictionary) */}
+                    {((sense.collocations_grouped && sense.collocations_grouped.length > 0) || (sense.collocations && sense.collocations.length > 0)) && (
+                      <div className="pl-4 sm:pl-5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleCollocations(sIdx)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-purple-300 bg-[#FAF5FF] hover:bg-[#F3E8FF] text-[#7E22CE] font-mono text-xs font-bold cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5 shadow-2xs"
+                        >
+                          {expandedCollocations[sIdx] ? <ChevronUp className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                          <span>Oxford Collocations Dictionary</span>
+                        </button>
+                        {expandedCollocations[sIdx] && (
+                          <div className="mt-2 p-3.5 rounded-xl border border-purple-200 bg-purple-50/40 space-y-2.5 text-xs animate-in fade-in duration-150">
+                            {sense.collocations_grouped && sense.collocations_grouped.length > 0 ? (
+                              sense.collocations_grouped.map((cg, cgIdx) => (
+                                <div key={cgIdx} className="space-y-1">
+                                  <span className="font-mono text-[11px] font-bold text-purple-900 uppercase tracking-wide">
+                                    {cg.category}:
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {cg.items.map((item, itmIdx) => {
+                                      const chunkTitle = activeWordDetail ? getCollocationChunkTitle(item, activeWordDetail.word) : item;
+                                      const isMined = flashcardWordSet.has(item.trim().toLowerCase()) || flashcardWordSet.has(chunkTitle.toLowerCase());
+                                      return (
+                                        <button
+                                          key={itmIdx}
+                                          type="button"
+                                          onClick={() => {
+                                            if (!activeWordDetail) return;
+                                            const card = buildOxfordCollocationFlashcard(
+                                              item,
+                                              activeWordDetail,
+                                              sIdx,
+                                              customPersianNote,
+                                              itmIdx
+                                            );
+                                            onPushToFlashcards(card);
+                                            showToast(`Collocation "${card.targetPhrase}" added to Flashcards!`, 'success');
+                                          }}
+                                          className={`group inline-flex items-center gap-1 border font-mono text-[11px] font-semibold px-2 py-0.5 rounded shadow-2xs transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
+                                            isMined
+                                              ? 'bg-purple-100 border-purple-400 text-purple-950 font-bold'
+                                              : 'bg-white hover:bg-purple-100 border-purple-200 text-purple-900'
+                                          }`}
+                                          title={isMined ? 'Already in flashcards (click to add again)' : `Click to add Collocation Flashcard ("${chunkTitle}")`}
+                                        >
+                                          <span>{item}</span>
+                                          {isMined ? (
+                                            <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                          ) : (
+                                            <Plus className="w-3 h-3 text-purple-500 opacity-60 group-hover:opacity-100" />
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {sense.collocations?.map((col, cIdx) => {
+                                  const chunkTitle = activeWordDetail ? getCollocationChunkTitle(col, activeWordDetail.word) : col;
+                                  const isMined = flashcardWordSet.has(col.trim().toLowerCase()) || flashcardWordSet.has(chunkTitle.toLowerCase());
+                                  return (
+                                    <button
+                                      key={cIdx}
+                                      type="button"
+                                      onClick={() => {
+                                        if (!activeWordDetail) return;
+                                        const card = buildOxfordCollocationFlashcard(
+                                          col,
+                                          activeWordDetail,
+                                          sIdx,
+                                          customPersianNote,
+                                          cIdx
+                                        );
+                                        onPushToFlashcards(card);
+                                        showToast(`Collocation "${card.targetPhrase}" added to Flashcards!`, 'success');
+                                      }}
+                                      className={`group inline-flex items-center gap-1 border font-mono text-[11px] font-semibold px-2 py-0.5 rounded shadow-2xs transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
+                                        isMined
+                                          ? 'bg-purple-100 border-purple-400 text-purple-950 font-bold'
+                                          : 'bg-white hover:bg-purple-100 border-slate-300 text-slate-800'
+                                      }`}
+                                      title={isMined ? 'Already in flashcards (click to add again)' : `Click to add Collocation Flashcard ("${chunkTitle}")`}
+                                    >
+                                      <span>{col}</span>
+                                      {isMined ? (
+                                        <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                      ) : (
+                                        <Plus className="w-3 h-3 text-slate-500 opacity-60 group-hover:opacity-100" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* مترادف‌ها و متضادهای این معنی (Sense) */}
+                    {((sense.synonyms && sense.synonyms.length > 0) ||
+                      (sense.opposites && sense.opposites.length > 0)) && (
+                      <div className="pl-4 sm:pl-5 pt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                        {sense.synonyms && sense.synonyms.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[10px] font-bold text-emerald-800 uppercase bg-emerald-100 px-1.5 py-0.5 rounded">
+                              SYN:
+                            </span>
+                            {sense.synonyms.map((syn, synIdx) => (
+                              <React.Fragment key={synIdx}>
+                                {synIdx > 0 && <span className="text-slate-400 text-xs">,</span>}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectWordByName(syn)}
+                                  className="font-mono text-[11px] text-emerald-950 font-bold underline decoration-emerald-400 hover:text-emerald-700 hover:decoration-emerald-700 underline-offset-2 cursor-pointer transition-colors"
+                                  title={`Jump to ${syn}`}
+                                >
+                                  {syn}
+                                </button>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        )}
+                        {sense.opposites && sense.opposites.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[10px] font-bold text-rose-800 uppercase bg-rose-100 px-1.5 py-0.5 rounded">
+                              OPP:
+                            </span>
+                            {sense.opposites.map((opp, oppIdx) => (
+                              <React.Fragment key={oppIdx}>
+                                {oppIdx > 0 && <span className="text-slate-400 text-xs">,</span>}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectWordByName(opp)}
+                                  className="font-mono text-[11px] text-rose-950 font-bold underline decoration-rose-400 hover:text-rose-700 hover:decoration-rose-700 underline-offset-2 cursor-pointer transition-colors"
+                                  title={`Jump to ${opp}`}
+                                >
+                                  {opp}
+                                </button>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 ))}
               </div>
+
+              {/* بخش اصطلاحات (Idioms) */}
+              {activeWordDetail.idioms && activeWordDetail.idioms.length > 0 && (
+                <div className="mt-6 pt-5 border-t-2 border-black/15">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-2.5 h-2.5 bg-[#0284C7] rounded-full" />
+                    <h4 className="text-xs font-mono font-black text-black tracking-wider uppercase">
+                      Idioms ({activeWordDetail.idioms.length})
+                    </h4>
+                  </div>
+
+                  <div className="space-y-3">
+                    {activeWordDetail.idioms.map((idm, iIdx) => (
+                      <div
+                        key={iIdx}
+                        className="p-3.5 rounded-2xl border-2 border-sky-300/80 bg-[#F0F9FF] hover:border-sky-500 transition-colors shadow-2xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs sm:text-sm font-black text-sky-950">
+                            {idm.phrase}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newCard = buildOxfordIdiomFlashcard(
+                                idm,
+                                activeWordDetail.word,
+                                customPersianNote.trim() || savedNotes[(activeWordDetail.word || '').toLowerCase()] || '',
+                                activeWordDetail.audio,
+                                iIdx
+                              );
+                              onPushToFlashcards(newCard);
+                              showToast(`Added idiom "${idm.phrase}" to Flashcards!`, 'success');
+                            }}
+                            className="w-7 h-7 rounded-lg border border-black/30 hover:border-black bg-white hover:bg-[#E0E7FF] text-[#312E81] flex items-center justify-center cursor-pointer shadow-2xs active:translate-x-0.5 active:translate-y-0.5 transition-all shrink-0"
+                            title="Add idiom to flashcards"
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {idm.definition && (
+                          <p className="text-xs text-slate-800 font-sans mt-1 leading-relaxed">
+                            {idm.definition}
+                          </p>
+                        )}
+
+                        {idm.examples && idm.examples.length > 0 && (
+                          <ul className="mt-2 space-y-1 pl-3 border-l-2 border-sky-400">
+                            {idm.examples.map((ex, exIdx) => (
+                              <li
+                                key={exIdx}
+                                className="text-[11px] font-sans italic text-slate-700 leading-normal"
+                              >
+                                "{ex}"
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* بخش ریشه‌شناسی واژه (Word Origin) */}
+              {activeWordDetail.word_origin && (
+                <div className="border-2 border-black/15 rounded-xl p-3 bg-black/2 shadow-[1px_1px_0px_0px_#000]">
+                  <button
+                    type="button"
+                    onClick={() => setShowWordOrigin(!showWordOrigin)}
+                    className="w-full flex items-center justify-between text-xs font-mono font-bold text-black/70 cursor-pointer active:translate-x-0.5"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <History className="w-3.5 h-3.5 text-black/50" />
+                      Word Origin
+                    </span>
+                    {showWordOrigin ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+
+                  {showWordOrigin && (
+                    <div className="mt-2 pt-2 border-t border-black/10 text-xs text-slate-700 font-serif leading-relaxed animate-in fade-in duration-150">
+                      {activeWordDetail.word_origin}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

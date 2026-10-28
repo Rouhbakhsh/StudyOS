@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { AppState } from '../../types';
 import { Badge } from '../common/Badge';
+import { getTodayDateString } from '../../utils/date';
 
 export type TabKey =
   | 'today'
@@ -49,7 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentWeek = Math.ceil(currentDay / 6);
   const phase = currentWeek <= 8 ? 1 : currentWeek <= 16 ? 2 : 3;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateString();
 
   const tabs: { key: TabKey; label: string; icon: React.ReactNode; badgeCount?: number }[] = [
     { key: 'today', label: 'Today', icon: <Flame className="w-4 h-4 shrink-0" /> },
@@ -65,7 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       key: 'mistakes',
       label: 'Mistakes',
       icon: <AlertOctagon className="w-4 h-4 shrink-0" />,
-      badgeCount: state.mistakes.filter((m) => !m.mastered && m.status !== 'resolved').length,
+      badgeCount: state.mistakes.filter((m) => m.status !== 'mastered').length,
     },
     { key: 'studio', label: 'Studio', icon: <Activity className="w-4 h-4 shrink-0" /> },
     { key: 'analytics', label: 'Analytics', icon: <BarChart3 className="w-4 h-4 shrink-0" /> },
@@ -132,8 +133,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               </>
             ) : (
               <>
-                <VolumeX className="w-3.5 h-3.5 text-black/40 shrink-0" />
-                <span className="hidden sm:inline text-black/50">Muted</span>
+                <VolumeX className="w-3.5 h-3.5 text-black/60 shrink-0" />
+                <span className="hidden sm:inline text-black/70">Muted</span>
               </>
             )}
           </button>
@@ -142,7 +143,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             type="button"
             onClick={onOpenSettings}
             title="System Configuration & Safeguards"
-            className="h-8 px-2 sm:px-2.5 rounded-lg sm:rounded-xl border-2 border-black bg-[#FFFDF5] hover:bg-[#FFF3C4] shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center gap-1.5 transition-transform"
+            className="h-8 px-2.5 sm:px-3 rounded-lg sm:rounded-xl border-2 border-black bg-[#FFFDF5] hover:bg-[#FFF3C4] shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center gap-1.5 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-1"
           >
             <Settings className="w-3.5 h-3.5 text-black shrink-0" />
             <span className="text-xs font-mono font-bold hidden sm:inline">Config</span>
@@ -161,7 +162,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ref={isActive ? activeTabRef : null}
                 type="button"
                 onClick={() => handleTabClick(tab.key)}
-                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg sm:rounded-xl font-sans text-xs sm:text-sm font-semibold select-none cursor-pointer border-2 transition-all active:scale-95 ${
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg sm:rounded-xl font-sans text-xs sm:text-sm font-semibold select-none cursor-pointer border-2 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-1 ${
                   isActive
                     ? 'bg-black text-white border-black shadow-[1.5px_1.5px_0px_0px_#000]'
                     : 'bg-black/5 text-black hover:bg-black/10 border-transparent'
